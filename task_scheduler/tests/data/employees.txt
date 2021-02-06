@@ -1,0 +1,10 @@
+{'Cho Chang': 'engineer',
+ 'Bathilda Bagshot': 'engineer',
+ 'Nicolas Flamel': 'engineer',
+ 'Mundungus Fletcher': 'architect',
+ 'Kingsley Shacklebolt': 'engineer',
+ 'Vincent Crabbe': 'engineer',
+ 'Pansy Parkinson': 'engineer',
+ 'Katie Bell': 'engineer',
+ 'Albus Dumbledore': 'engineer',
+ 'Susan Bones': 'architect'}
