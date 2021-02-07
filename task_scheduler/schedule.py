@@ -7,15 +7,14 @@ import pandas as pd
 
 
 def schedule_uniform(tasks, workers, **kwargs):
-    """Returns pd.DataFrame with tasks uniformly distributed across workers.
+    """Returns dict of quotas for `tasks` uniformly distributed to `workers`.
 
     Args:
-        tasks: pd.DataFrame containing tasks. Some tasks may be pre assigned.
-            Pre assigned tasks will be respected.
+        tasks: pd.DataFrame containing tasks. Pre assigned tasks will be respected.
         workers: dict containing info about workers e.g. {worker: type}
 
     Returns:
-        pd.DataFrame with all tasks assigned to a worker.
+        Dict of task quotas of form {worker: {task_type: task_count, ...}, ...}.
     """
     cycle_workers = cycle(workers)
     worker_task_quota = defaultdict(dict)
@@ -38,15 +37,14 @@ def schedule_uniform(tasks, workers, **kwargs):
 
 
 def schedule_uniform_by_type(tasks, workers, **kwargs):
-    """Returns pd.DataFrame with tasks uniformly distributed across workers by type.
+    """Returns dict of quotas for `tasks` uniformly distributed to `workers` by task type.
 
     Args:
-        tasks: pd.DataFrame containing tasks. Some tasks may be pre assigned.
-            Pre assigned tasks will be respected where correctly assigned by type.
+        tasks: pd.DataFrame containing tasks. Pre assigned tasks will be respected.
         workers: dict containing info about workers e.g. {worker: type}
 
     Returns:
-        pd.DataFrame with all tasks assigned to a worker.
+        Dict of task quotas of form {worker: {task_type: task_count, ...}, ...}.
     """
     # Construct new tasks DataFrame from sub sets by type
     worker_task_quota = defaultdict(dict)
@@ -83,6 +81,16 @@ def fix_incorrect_task_assignments(tasks, workers):
 
 
 def assign_tasks(tasks, worker_task_quota):
+    """Returns pd.DataFrame of tasks assigned according to quota.
+
+    Args:
+        tasks: pd.DataFrame containing tasks with some unassigned tasks.
+        worker_task_quota: Dict of task quotas of form
+            {worker: {task_type: task_count, ...}, ...}
+
+    Returns:
+        pd.DataFrame with all tasks assigned according to quota.
+    """
     for w, quota in worker_task_quota.items():
         for task_type, task_count in quota.items():
             mask = tasks[(tasks.type == task_type) & (tasks.user == 'None')]
@@ -92,6 +100,20 @@ def assign_tasks(tasks, worker_task_quota):
 
 def schedule(tasks, workers, quota_func=schedule_uniform, quota_kwargs={},
              check_assignments=True):
+    """Returns pd.DataFrame of tasks assigned in accordance with `quota_func`.
+
+    Args:
+        tasks: pd.DataFrame containing tasks.
+        workers: dict containing info about workers e.g. {worker: type}
+        quota_func: function taking args (tasks, workers) and returning
+            worker task quota dict of form
+            {worker: {task_type: task_count, ...}, ...}.
+        quota_kwargs: optional keyword args to pass to `quota_func`.
+        check_assignments: Bool iff True unassign incorrectly assigned tasks.
+
+    Returns:
+        pd.DataFrame with all tasks assigned according to quota.
+    """
     if check_assignments:
         tasks = fix_incorrect_task_assignments(tasks, workers)
     worker_task_quotas = quota_func(tasks, workers, **quota_kwargs)
