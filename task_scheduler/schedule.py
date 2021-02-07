@@ -1,9 +1,12 @@
 """Functions/class for schedling worker tasks."""
 
+from collections import defaultdict
+from itertools import cycle
+
 import pandas as pd
 
 
-def schedule_uniform(tasks, workers):
+def schedule_uniform(tasks, workers, **kwargs):
     """Returns pd.DataFrame with tasks uniformly distributed across workers.
 
     Args:
@@ -14,28 +17,48 @@ def schedule_uniform(tasks, workers):
     Returns:
         pd.DataFrame with all tasks assigned to a worker.
     """
-    n_tasks = len(tasks)
-    n_workers = len(workers)
-    n_tasks_per_worker = n_tasks // n_workers
-    n_tasks_remainder = n_tasks % n_tasks_per_worker
+    cycle_workers = cycle(workers)
+    worker_task_quota = defaultdict(dict)
+    for task_type in tasks.type.unique():
+        n_tasks = len(tasks[tasks.type == task_type])
+        n_workers = len(workers)
+        n_tasks_per_worker = n_tasks // n_workers
+        n_tasks_remainder = n_tasks % n_workers
 
-    # Determine counts of new tasks to assign
-    assigned_tasks_count = {w: len(tasks[tasks.user == w]) for w in workers}
-    newly_assigned_tasks_count = {
-        w: n_tasks_per_worker - assigned_tasks_count[w] for w in workers
-    }
-    for w in list(workers.keys())[:n_tasks_remainder]:
-        newly_assigned_tasks_count[w] += 1
+        for i, w in enumerate(workers):
+            assigned_task_count = len(tasks[(tasks.type == task_type) & (tasks.user == w)])
+            worker_task_quota[w][task_type] = n_tasks_per_worker - assigned_task_count
 
-    unassigned_index = tasks.index[tasks.user == 'None']
+        # Assign the remaining tasks in round robin fashion
+        for i in range(n_tasks_remainder):
+            w = next(cycle_workers)
+            worker_task_quota[w][task_type] += 1
 
-    prev_idx = 0
-    for w, n_tasks in newly_assigned_tasks_count.items():
-        idx_block = unassigned_index[prev_idx:prev_idx + n_tasks]
-        tasks.loc[idx_block, 'user'] = w
-        prev_idx += n_tasks
+    return worker_task_quota
 
-    return tasks
+
+def schedule_uniform_by_type(tasks, workers, **kwargs):
+    """Returns pd.DataFrame with tasks uniformly distributed across workers by type.
+
+    Args:
+        tasks: pd.DataFrame containing tasks. Some tasks may be pre assigned.
+            Pre assigned tasks will be respected where correctly assigned by type.
+        workers: dict containing info about workers e.g. {worker: type}
+
+    Returns:
+        pd.DataFrame with all tasks assigned to a worker.
+    """
+    # Construct new tasks DataFrame from sub sets by type
+    worker_task_quota = defaultdict(dict)
+    for task_type in tasks.type.unique():
+        workers_by_type = {w: t for w, t in workers.items() if t == task_type}
+        worker_task_quota_by_type = schedule_uniform(
+            tasks[tasks.type == task_type],
+            workers_by_type,
+        )
+        for w in workers_by_type:
+            worker_task_quota[w].update(worker_task_quota_by_type[w])
+    return worker_task_quota
 
 
 def fix_incorrect_task_assignments(tasks, workers):
@@ -48,7 +71,6 @@ def fix_incorrect_task_assignments(tasks, workers):
     Returns:
         pd.DataFrame with incorrectly assigned tasks unassigned.
     """
-    # First unassign any tasks which are incorrectly assigned for workers of specific type
     for task_type in tasks.type.unique():
         workers_for_type = set([
             w for w, w_type in workers.items()
@@ -60,29 +82,18 @@ def fix_incorrect_task_assignments(tasks, workers):
     return tasks
 
 
-def schedule_uniform_by_type(tasks, workers):
-    """Returns pd.DataFrame with tasks uniformly distributed across workers by type.
+def assign_tasks(tasks, worker_task_quota):
+    for w, quota in worker_task_quota.items():
+        for task_type, task_count in quota.items():
+            mask = tasks[(tasks.type == task_type) & (tasks.user == 'None')]
+            tasks.loc[mask.index[:task_count], 'user'] = w
+    return tasks
 
-    Args:
-        tasks: pd.DataFrame containing tasks. Some tasks may be pre assigned.
-            Pre assigned tasks will be respected where correctly assigned by type.
-        workers: dict containing info about workers e.g. {worker: type}
 
-    Returns:
-        pd.DataFrame with all tasks assigned to a worker.
-    """
-    tasks = fix_incorrect_task_assignments(tasks, workers)
-
-    # Construct new tasks DataFrame from sub sets by type
-    tasks_by_type_all = []
-    for task_type in tasks.type.unique():
-        tasks_by_type = schedule_uniform(
-            tasks[tasks.type == task_type].copy(),
-            {w: t for w, t in workers.items() if t == task_type}
-        )
-        tasks_by_type_all += [tasks_by_type]
-    tasks = pd.concat(tasks_by_type_all)
-
-    tasks.sort_values(['version', 'user'], inplace=True)
-
+def schedule(tasks, workers, quota_func=schedule_uniform, quota_kwargs={},
+             check_assignments=True):
+    if check_assignments:
+        tasks = fix_incorrect_task_assignments(tasks, workers)
+    worker_task_quotas = quota_func(tasks, workers, **quota_kwargs)
+    tasks = assign_tasks(tasks, worker_task_quotas)
     return tasks

@@ -4,7 +4,7 @@ import os
 from unittest import TestCase
 
 from task_scheduler.io import load_csv_data, load_json_data
-from task_scheduler.schedule import schedule_uniform
+from task_scheduler.schedule import schedule, schedule_uniform
 
 
 class TestSchedule(TestCase):
@@ -23,7 +23,8 @@ class TestSchedule(TestCase):
             w: tasks.index[tasks.user == w] for w in workers
         }
 
-        tasks = schedule_uniform(tasks, workers)
+        # tasks = schedule_uniform(tasks, workers)
+        tasks = schedule(tasks, workers, check_assignments=False)
 
         # Check that there are no unassigned tasks
         self.assertEqual(len(tasks[tasks.user == 'None']), 0)
