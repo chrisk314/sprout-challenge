@@ -3,8 +3,6 @@
 from collections import defaultdict
 from itertools import cycle
 
-import pandas as pd
-
 
 def schedule_uniform(tasks, workers, **kwargs):
     """Returns dict of quotas for `tasks` uniformly distributed to `workers`.
@@ -24,7 +22,7 @@ def schedule_uniform(tasks, workers, **kwargs):
         n_tasks_per_worker = n_tasks // n_workers
         n_tasks_remainder = n_tasks % n_workers
 
-        for i, w in enumerate(workers):
+        for w in workers:
             assigned_task_count = len(tasks[(tasks.type == task_type) & (tasks.user == w)])
             worker_task_quota[w][task_type] = n_tasks_per_worker - assigned_task_count
 
